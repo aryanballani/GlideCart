@@ -1,0 +1,24 @@
+# Grocery Buddy - Raspberry Pi Requirements
+
+# Core
+flask>=3.0.0
+flask-cors>=4.0.0
+websockets>=12.0
+asyncio
+
+# Computer Vision
+opencv-python>=4.8.0
+numpy>=1.24.0
+
+# Hardware Control
+RPi.GPIO>=0.7.1
+pigpio>=1.78
+
+# Camera (for Pi Camera)
+picamera2>=0.3.0
+
+# QR Code Detection (optional)
+pyzbar>=0.1.9
+
+# Utilities
+python-dotenv>=1.0.0

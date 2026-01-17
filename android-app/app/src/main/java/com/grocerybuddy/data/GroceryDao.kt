@@ -1,0 +1,25 @@
+package com.grocerybuddy.data
+
+import androidx.room.*
+import kotlinx.coroutines.flow.Flow
+
+@Dao
+interface GroceryDao {
+    @Query("SELECT * FROM grocery_items ORDER BY timestamp DESC")
+    fun getAllItems(): Flow<List<GroceryItem>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(item: GroceryItem)
+
+    @Update
+    suspend fun update(item: GroceryItem)
+
+    @Delete
+    suspend fun delete(item: GroceryItem)
+
+    @Query("DELETE FROM grocery_items WHERE id = :itemId")
+    suspend fun deleteById(itemId: Int)
+
+    @Query("DELETE FROM grocery_items")
+    suspend fun deleteAll()
+}
