@@ -127,7 +127,7 @@ fun StatusCard(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     StatItem(
-                        icon = Icons.Default.StraightenRounded,
+                        icon = Icons.Default.Speed,
                         label = "Distance",
                         value = if (isConnected) "${String.format("%.1f", status.distance)}m" else "--"
                     )
