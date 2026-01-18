@@ -1,13 +1,16 @@
 """
-Object Detector - YOLO-based grocery item detection with color fallback
+Object Detector - ONNX/YOLO-based grocery item detection with color fallback
 """
 
 import cv2
 import numpy as np
+from pathlib import Path
 from typing import Optional, List, Tuple
 from dataclasses import dataclass
 from .config import (
     YOLO_MODEL, YOLO_CONFIDENCE_THRESHOLD, YOLO_IOU_THRESHOLD,
+    ONNX_MODEL, ONNX_INPUT_SIZE, ONNX_CONFIDENCE_THRESHOLD, ONNX_IOU_THRESHOLD,
+    ONNX_CLASS_NAMES,
     GROCERY_CLASSES, GROCERY_ITEM_COLORS, MIN_OBJECT_AREA,
     estimate_distance
 )
@@ -26,19 +29,35 @@ class ObjectDetection:
 
 
 class ObjectDetector:
-    """Detects grocery items using YOLO (primary) or color detection (fallback)"""
+    """Detects grocery items using ONNX/YOLO (primary) or color detection (fallback)"""
 
     def __init__(self, use_yolo: bool = True):
         """
         Initialize object detector
 
         Args:
-            use_yolo: Try to use YOLO if available, fallback to color detection
+            use_yolo: Try to use ONNX/YOLO if available, fallback to color detection
         """
+        self.onnx_available = False
         self.yolo_available = False
+        self.ort_session = None
+        self.ort_input_name = None
+        self.ort_output_names = None
+        self.onnx_input_size = (ONNX_INPUT_SIZE, ONNX_INPUT_SIZE)  # (h, w)
         self.model = None
 
+        self._onnx_class_names = ONNX_CLASS_NAMES if ONNX_CLASS_NAMES else None
+
         if use_yolo:
+            try:
+                self._load_onnx()
+            except ImportError:
+                pass
+            except Exception as e:
+                print(f"⚠ ONNX loading failed: {e}")
+                print("  Using YOLO/color detection fallback")
+
+        if use_yolo and not self.onnx_available:
             try:
                 from ultralytics import YOLO
                 self.model = YOLO(YOLO_MODEL)
@@ -51,8 +70,175 @@ class ObjectDetector:
                 print(f"⚠ YOLO loading failed: {e}")
                 print("  Using color detection fallback")
 
-        if not self.yolo_available:
+        if not self.onnx_available and not self.yolo_available:
             print("✓ ObjectDetector initialized (color-based mode)")
+
+    def _load_onnx(self) -> None:
+        base_dir = Path(__file__).resolve().parents[1]
+        model_path = base_dir / ONNX_MODEL
+        if not model_path.exists():
+            return
+
+        import onnxruntime as ort
+
+        self.ort_session = ort.InferenceSession(
+            str(model_path),
+            providers=["CPUExecutionProvider"]
+        )
+        inputs = self.ort_session.get_inputs()
+        outputs = self.ort_session.get_outputs()
+        self.ort_input_name = inputs[0].name
+        self.ort_output_names = [o.name for o in outputs]
+
+        shape = inputs[0].shape
+        if len(shape) >= 4 and isinstance(shape[2], int) and isinstance(shape[3], int):
+            self.onnx_input_size = (shape[2], shape[3])
+
+        self.onnx_available = True
+        print(f"✓ ONNX model loaded: {model_path}")
+
+    def _letterbox(self, img: np.ndarray, new_shape: Tuple[int, int]) -> Tuple[np.ndarray, float, Tuple[float, float]]:
+        shape = img.shape[:2]  # (h, w)
+        if isinstance(new_shape, int):
+            new_shape = (new_shape, new_shape)
+
+        r = min(new_shape[0] / shape[0], new_shape[1] / shape[1])
+        new_unpad = (int(round(shape[1] * r)), int(round(shape[0] * r)))
+        dw = new_shape[1] - new_unpad[0]
+        dh = new_shape[0] - new_unpad[1]
+        dw /= 2
+        dh /= 2
+
+        if shape[::-1] != new_unpad:
+            img = cv2.resize(img, new_unpad, interpolation=cv2.INTER_LINEAR)
+
+        top, bottom = int(round(dh - 0.1)), int(round(dh + 0.1))
+        left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
+        img = cv2.copyMakeBorder(img, top, bottom, left, right, cv2.BORDER_CONSTANT, value=(114, 114, 114))
+
+        return img, r, (dw, dh)
+
+    def _nms(self, boxes: np.ndarray, scores: np.ndarray, iou_threshold: float) -> List[int]:
+        if len(boxes) == 0:
+            return []
+
+        x1 = boxes[:, 0]
+        y1 = boxes[:, 1]
+        x2 = boxes[:, 2]
+        y2 = boxes[:, 3]
+        areas = (x2 - x1 + 1) * (y2 - y1 + 1)
+        order = scores.argsort()[::-1]
+
+        keep = []
+        while order.size > 0:
+            i = int(order[0])
+            keep.append(i)
+
+            xx1 = np.maximum(x1[i], x1[order[1:]])
+            yy1 = np.maximum(y1[i], y1[order[1:]])
+            xx2 = np.minimum(x2[i], x2[order[1:]])
+            yy2 = np.minimum(y2[i], y2[order[1:]])
+
+            w = np.maximum(0.0, xx2 - xx1 + 1)
+            h = np.maximum(0.0, yy2 - yy1 + 1)
+            inter = w * h
+            iou = inter / (areas[i] + areas[order[1:]] - inter)
+
+            inds = np.where(iou <= iou_threshold)[0]
+            order = order[inds + 1]
+
+        return keep
+
+    def _resolve_label(self, class_id: int) -> Optional[str]:
+        if self._onnx_class_names:
+            if 0 <= class_id < len(self._onnx_class_names):
+                return self._onnx_class_names[class_id]
+            return None
+
+        return GROCERY_CLASSES.get(class_id, f"class_{class_id}")
+
+    def _preprocess_onnx(self, frame: np.ndarray) -> Tuple[np.ndarray, float, Tuple[float, float]]:
+        img, ratio, pad = self._letterbox(frame, self.onnx_input_size)
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        img = img.astype(np.float32) / 255.0
+        img = np.transpose(img, (2, 0, 1))
+        img = np.expand_dims(img, axis=0)
+        return img, ratio, pad
+
+    def detect_onnx(self, frame: np.ndarray) -> List[ObjectDetection]:
+        if not self.onnx_available or self.ort_session is None:
+            return []
+
+        input_tensor, ratio, pad = self._preprocess_onnx(frame)
+        outputs = self.ort_session.run(self.ort_output_names, {self.ort_input_name: input_tensor})
+        output = outputs[0]
+
+        if output.ndim == 3:
+            output = output[0]
+
+        if output.shape[0] < output.shape[1] and output.shape[0] < 128:
+            output = output.T
+
+        boxes = output[:, :4]
+        scores = output[:, 4:]
+        class_ids = np.argmax(scores, axis=1)
+        confidences = scores[np.arange(scores.shape[0]), class_ids]
+
+        keep = confidences >= ONNX_CONFIDENCE_THRESHOLD
+        boxes = boxes[keep]
+        confidences = confidences[keep]
+        class_ids = class_ids[keep]
+
+        if len(boxes) == 0:
+            return []
+
+        # xywh -> xyxy
+        xyxy = np.zeros_like(boxes)
+        xyxy[:, 0] = boxes[:, 0] - boxes[:, 2] / 2
+        xyxy[:, 1] = boxes[:, 1] - boxes[:, 3] / 2
+        xyxy[:, 2] = boxes[:, 0] + boxes[:, 2] / 2
+        xyxy[:, 3] = boxes[:, 1] + boxes[:, 3] / 2
+
+        keep_indices = self._nms(xyxy, confidences, ONNX_IOU_THRESHOLD)
+
+        detections = []
+        for idx in keep_indices:
+            class_id = int(class_ids[idx])
+            label = self._resolve_label(class_id)
+            if label is None:
+                continue
+
+            x1, y1, x2, y2 = xyxy[idx]
+            x1 = (x1 - pad[0]) / ratio
+            y1 = (y1 - pad[1]) / ratio
+            x2 = (x2 - pad[0]) / ratio
+            y2 = (y2 - pad[1]) / ratio
+
+            x1 = max(0, min(int(x1), frame.shape[1] - 1))
+            y1 = max(0, min(int(y1), frame.shape[0] - 1))
+            x2 = max(0, min(int(x2), frame.shape[1] - 1))
+            y2 = max(0, min(int(y2), frame.shape[0] - 1))
+
+            w = max(0, x2 - x1)
+            h = max(0, y2 - y1)
+
+            cx = x1 + w // 2
+            cy = y1 + h // 2
+
+            area = w * h
+            distance = estimate_distance(area)
+
+            detections.append(ObjectDetection(
+                found=True,
+                label=label,
+                confidence=float(confidences[idx]),
+                bbox=(x1, y1, w, h),
+                center=(cx, cy),
+                distance=distance,
+                method="onnx"
+            ))
+
+        return detections
 
     def detect_yolo(self, frame: np.ndarray) -> List[ObjectDetection]:
         """
@@ -182,7 +368,13 @@ class ObjectDetector:
         Returns:
             List of ObjectDetection results
         """
-        # Try YOLO first
+        # Try ONNX first
+        if self.onnx_available:
+            detections = self.detect_onnx(frame)
+            detections = sorted(detections, key=lambda d: d.confidence, reverse=True)
+            return detections[:max_results]
+
+        # Try YOLO next
         if self.yolo_available:
             detections = self.detect_yolo(frame)
             # Sort by confidence and limit results

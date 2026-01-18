@@ -65,10 +65,20 @@ GROCERY_ITEM_COLORS = {
     }
 }
 
-# YOLO Configuration
-YOLO_MODEL = "yolov8n.pt"  # Nano model for speed
+# YOLO Configuration (Ultralytics .pt)
+YOLO_MODEL = "models/yolov8n.pt"  # Nano model for speed
 YOLO_CONFIDENCE_THRESHOLD = 0.5
 YOLO_IOU_THRESHOLD = 0.45
+
+# ONNX Configuration (Ultralytics export)
+ONNX_MODEL = "models/best.onnx"
+ONNX_INPUT_SIZE = 416
+ONNX_CONFIDENCE_THRESHOLD = 0.4
+ONNX_IOU_THRESHOLD = 0.45
+
+# Class names for ONNX custom model (index-aligned)
+# Example: ["banana", "apple", "orange"]
+ONNX_CLASS_NAMES = []
 
 # Grocery categories from YOLO COCO dataset
 GROCERY_CLASSES = {

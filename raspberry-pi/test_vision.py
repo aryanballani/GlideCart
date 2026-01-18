@@ -25,7 +25,7 @@ def main():
     print("\n💡 TIPS:")
     print("  - For FOLLOW mode: Hold ArUco marker in center, press 'C'")
     print("  - For SCAN mode: Show banana/apple/orange to camera")
-    print("  - YOLO will be used if installed (pip install ultralytics)")
+    print("  - ONNX will be used if models/best.onnx is present (pip install onnxruntime)")
     print("=" * 70)
     print()
 
