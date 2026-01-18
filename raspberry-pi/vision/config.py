@@ -114,6 +114,15 @@ GROCERY_CLASSES = {
 MIN_CONTOUR_AREA = 500  # Minimum pixels for valid detection
 MIN_OBJECT_AREA = 1000  # Minimum pixels for object detection
 
+# Fall Detection (heuristic on person bbox)
+FALL_DETECTION_ENABLED = True
+FALL_ASPECT_RATIO_THRESHOLD = 0.8  # width / height (detect squats)
+FALL_VERTICAL_SPEED_THRESHOLD_PX = 700.0  # pixels per second (detect slower drops)
+FALL_CONSECUTIVE_FRAMES = 1.5
+FALL_DEBUG_DRAW = False
+FALL_DEBUG_LOG = False
+FALL_DEBUG_LOG_INTERVAL_S = 0.5
+
 # Distance Estimation (based on area)
 DISTANCE_CALIBRATION = {
     "very_close": (15000, float('inf')),  # > 15000 px² = 0.5m

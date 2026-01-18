@@ -10,8 +10,9 @@ from typing import Optional, Tuple, Union
 from dataclasses import dataclass
 
 from .aruco_tracker import ArucoTracker, ArucoDetection
+from .fall_detector import FallDetector
 from .object_detector import ObjectDetector, ObjectDetection
-from .config import CAMERA_WIDTH, CAMERA_HEIGHT, CAMERA_FPS
+from .config import CAMERA_WIDTH, CAMERA_HEIGHT, CAMERA_FPS, FALL_DETECTION_ENABLED, FALL_DEBUG_DRAW
 
 
 class CameraMode(Enum):
@@ -32,6 +33,9 @@ class VisionResult:
     distance: float = 0.0
     tracking_offset: float = 0.0  # -1 (left) to 1 (right) for robot steering
     raw_detection: Union[ArucoDetection, ObjectDetection, None] = None
+    fall_detected: bool = False
+    fall_reason: str = ""
+    fall_bbox: Optional[Tuple[int, int, int, int]] = None
 
 
 class CameraController:
@@ -63,6 +67,8 @@ class CameraController:
         # Initialize vision modules
         self.aruco_tracker = ArucoTracker()
         self.object_detector = ObjectDetector(use_yolo=use_yolo)
+        self.fall_detector = FallDetector()
+        self.fall_detection_enabled = FALL_DETECTION_ENABLED
         
         # Performance optimization - frame skipping
         self._frame_count = 0
@@ -158,6 +164,7 @@ class CameraController:
     def _process_follow_mode(self, frame: np.ndarray) -> VisionResult:
         """Process frame in FOLLOW mode - ArUco marker tracking"""
         detection = self.aruco_tracker.detect(frame)
+        fall_detection = self.fall_detector.update(frame) if self.fall_detection_enabled else None
 
         if detection.found:
             # Calculate steering offset
@@ -182,7 +189,10 @@ class CameraController:
                 bbox=detection.bbox,
                 distance=distance_m,
                 tracking_offset=offset,
-                raw_detection=detection
+                raw_detection=detection,
+                fall_detected=bool(fall_detection and fall_detection.fall_detected),
+                fall_reason=fall_detection.reason if fall_detection else "",
+                fall_bbox=fall_detection.bbox if fall_detection else None
             )
         else:
             return VisionResult(
@@ -190,7 +200,10 @@ class CameraController:
                 found=False,
                 label="No ArUco marker detected",
                 confidence=0.0,
-                raw_detection=detection
+                raw_detection=detection,
+                fall_detected=bool(fall_detection and fall_detection.fall_detected),
+                fall_reason=fall_detection.reason if fall_detection else "",
+                fall_bbox=fall_detection.bbox if fall_detection else None
             )
 
     def _process_scan_mode(self, frame: np.ndarray) -> VisionResult:
@@ -270,6 +283,24 @@ class CameraController:
         # Center crosshair
         cv2.line(annotated, (w//2-20, h//2), (w//2+20, h//2), (255, 255, 255), 1)
         cv2.line(annotated, (w//2, h//2-20), (w//2, h//2+20), (255, 255, 255), 1)
+
+        # Fall detection overlay
+        if result.fall_bbox and (result.fall_detected or FALL_DEBUG_DRAW):
+            fx, fy, fw, fh = result.fall_bbox
+            box_color = (0, 0, 255) if result.fall_detected else (255, 255, 0)
+            cv2.rectangle(annotated, (fx, fy), (fx + fw, fy + fh), box_color, 2)
+
+            if result.fall_detected:
+                fall_text = "FALL DETECTED"
+                cv2.putText(
+                    annotated,
+                    fall_text,
+                    (10, h - 50),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.8,
+                    (0, 0, 255),
+                    2
+                )
 
         # Detection visualization
         if result.found and result.bbox:
