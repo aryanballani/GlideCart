@@ -68,24 +68,29 @@ class MotorController:
             print("✓ MotorController initialized (MOCK MODE - no GPIO)")
             return
 
-        # Setup GPIO
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setup(ENA, GPIO.OUT)
-        GPIO.setup(IN1, GPIO.OUT)
-        GPIO.setup(IN2, GPIO.OUT)
-        GPIO.setup(ENB, GPIO.OUT)
-        GPIO.setup(IN3, GPIO.OUT)
-        GPIO.setup(IN4, GPIO.OUT)
+        try:
+            # Setup GPIO
+            GPIO.setmode(GPIO.BCM)
+            GPIO.setup(ENA, GPIO.OUT)
+            GPIO.setup(IN1, GPIO.OUT)
+            GPIO.setup(IN2, GPIO.OUT)
+            GPIO.setup(ENB, GPIO.OUT)
+            GPIO.setup(IN3, GPIO.OUT)
+            GPIO.setup(IN4, GPIO.OUT)
 
-        # Initialize PWM
-        self.pwm_left = GPIO.PWM(ENA, PWM_FREQUENCY)
-        self.pwm_right = GPIO.PWM(ENB, PWM_FREQUENCY)
+            # Initialize PWM
+            self.pwm_left = GPIO.PWM(ENA, PWM_FREQUENCY)
+            self.pwm_right = GPIO.PWM(ENB, PWM_FREQUENCY)
 
-        # Start PWM with 0% duty cycle (motors off)
-        self.pwm_left.start(0)
-        self.pwm_right.start(0)
+            # Start PWM with 0% duty cycle (motors off)
+            self.pwm_left.start(0)
+            self.pwm_right.start(0)
 
-        print("✓ MotorController initialized (GPIO mode)")
+            print("✓ MotorController initialized (GPIO mode)")
+        except Exception as e:
+            print(f"⚠ GPIO initialization failed: {e}")
+            print("✓ Motor Controller running in MOCK MODE")
+            self.enabled = False
 
     def set_motors(self, left_speed: float, right_speed: float):
         """

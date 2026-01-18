@@ -26,6 +26,7 @@ fun GroceryItemCard(
     modifier: Modifier = Modifier
 ) {
     var isExpanded by remember { mutableStateOf(false) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
 
     val backgroundColor by animateColorAsState(
         targetValue = if (item.removed) {
@@ -95,7 +96,7 @@ fun GroceryItemCard(
 
             // Delete button
             IconButton(
-                onClick = onDelete,
+                onClick = { showDeleteDialog = true },
                 modifier = Modifier.size(40.dp)
             ) {
                 Icon(
@@ -105,5 +106,43 @@ fun GroceryItemCard(
                 )
             }
         }
+    }
+
+    // Confirm Delete Dialog
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error
+                )
+            },
+            title = {
+                Text("Delete Item?")
+            },
+            text = {
+                Text("Are you sure you want to delete \"${item.name}\"? This action cannot be undone.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDelete()
+                        showDeleteDialog = false
+                    },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }

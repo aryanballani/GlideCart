@@ -7,7 +7,7 @@ import okhttp3.*
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
-class RobotWebSocket(private val serverUrl: String = "ws://192.168.1.100:8765") {
+class RobotWebSocket {
 
     private val client = OkHttpClient.Builder()
         .pingInterval(30, TimeUnit.SECONDS)
@@ -15,12 +15,16 @@ class RobotWebSocket(private val serverUrl: String = "ws://192.168.1.100:8765") 
         .build()
 
     private var webSocket: WebSocket? = null
+    private var currentServerUrl: String = "ws://10.19.129.238:8765"
 
     private val _connectionState = MutableStateFlow(ConnectionState.DISCONNECTED)
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
 
     private val _robotStatus = MutableStateFlow(RobotStatus())
     val robotStatus: StateFlow<RobotStatus> = _robotStatus.asStateFlow()
+
+    private val _videoFrame = MutableStateFlow<String?>(null)
+    val videoFrame: StateFlow<String?> = _videoFrame.asStateFlow()
 
     enum class ConnectionState {
         DISCONNECTED,
@@ -44,38 +48,53 @@ class RobotWebSocket(private val serverUrl: String = "ws://192.168.1.100:8765") 
         val detectedObject: String = ""
     )
 
-    fun connect() {
+    fun connect(serverIp: String = "10.19.129.238", serverPort: Int = 8765) {
         if (_connectionState.value == ConnectionState.CONNECTED) {
             return
         }
 
+        currentServerUrl = "ws://$serverIp:$serverPort"
         _connectionState.value = ConnectionState.CONNECTING
 
         val request = Request.Builder()
-            .url(serverUrl)
+            .url(currentServerUrl)
             .build()
 
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 _connectionState.value = ConnectionState.CONNECTED
+                // Request video stream on connection
+                sendCommand("start_video_stream")
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
                 try {
                     val json = JSONObject(text)
-                    val modeStr = json.optString("mode", "scan")
-                    val mode = if (modeStr == "follow") CameraMode.FOLLOW else CameraMode.SCAN
+                    val type = json.optString("type", "status")
 
-                    _robotStatus.value = RobotStatus(
-                        isTracking = json.optBoolean("tracking", false),
-                        distance = json.optDouble("distance", 0.0).toFloat(),
-                        battery = json.optInt("battery", 100),
-                        targetLocked = json.optBoolean("target_locked", false),
-                        obstacleDetected = json.optBoolean("obstacle_detected", false),
-                        calibrated = json.optBoolean("calibrated", false),
-                        mode = mode,
-                        detectedObject = json.optString("detected_object", "")
-                    )
+                    when (type) {
+                        "status" -> {
+                            val modeStr = json.optString("mode", "scan")
+                            val mode = if (modeStr == "follow") CameraMode.FOLLOW else CameraMode.SCAN
+
+                            _robotStatus.value = RobotStatus(
+                                isTracking = json.optBoolean("tracking", false),
+                                distance = json.optDouble("distance", 0.0).toFloat(),
+                                battery = json.optInt("battery", 100),
+                                targetLocked = json.optBoolean("target_locked", false),
+                                obstacleDetected = json.optBoolean("obstacle_detected", false),
+                                calibrated = json.optBoolean("calibrated", false),
+                                mode = mode,
+                                detectedObject = json.optString("detected_object", "")
+                            )
+                        }
+                        "video_frame" -> {
+                            val frameData = json.optString("frame", "")
+                            if (frameData.isNotEmpty()) {
+                                _videoFrame.value = frameData
+                            }
+                        }
+                    }
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
@@ -125,8 +144,10 @@ class RobotWebSocket(private val serverUrl: String = "ws://192.168.1.100:8765") 
         _connectionState.value = ConnectionState.DISCONNECTED
     }
 
-    fun reconnect() {
+    fun reconnect(serverIp: String = "10.19.129.238", serverPort: Int = 8765) {
         disconnect()
-        connect()
+        connect(serverIp, serverPort)
     }
+
+    fun getCurrentServerUrl(): String = currentServerUrl
 }

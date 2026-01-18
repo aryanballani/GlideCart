@@ -26,15 +26,24 @@ import com.grocerybuddy.ui.theme.*
 fun ControlButtons(
     isTracking: Boolean,
     isConnected: Boolean,
+    currentMode: String,
     onCalibrate: () -> Unit,
     onStartStop: () -> Unit,
     onEmergencyStop: () -> Unit,
+    onModeChange: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        // Mode Toggle
+        ModeToggle(
+            currentMode = currentMode,
+            onModeChange = onModeChange,
+            enabled = isConnected
+        )
+
         // Top Row - Calibrate and Start/Stop
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -45,7 +54,7 @@ fun ControlButtons(
                 icon = Icons.Default.CenterFocusStrong,
                 gradient = listOf(Info, Color(0xFF2563EB)),
                 onClick = onCalibrate,
-                enabled = isConnected,
+                enabled = isConnected && currentMode == "follow",
                 modifier = Modifier.weight(1f)
             )
 
@@ -68,6 +77,102 @@ fun ControlButtons(
             onClick = onEmergencyStop,
             enabled = isConnected
         )
+    }
+}
+
+@Composable
+private fun ModeToggle(
+    currentMode: String,
+    onModeChange: (String) -> Unit,
+    enabled: Boolean
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            ModeButton(
+                text = "SCAN",
+                icon = Icons.Default.Scanner,
+                isSelected = currentMode == "scan",
+                onClick = { if (enabled) onModeChange("scan") },
+                enabled = enabled,
+                modifier = Modifier.weight(1f)
+            )
+
+            ModeButton(
+                text = "FOLLOW",
+                icon = Icons.Default.PersonPin,
+                isSelected = currentMode == "follow",
+                onClick = { if (enabled) onModeChange("follow") },
+                enabled = enabled,
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ModeButton(
+    text: String,
+    icon: ImageVector,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    enabled: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val backgroundColor by animateColorAsState(
+        targetValue = when {
+            !enabled -> Color.Gray.copy(alpha = 0.3f)
+            isSelected -> Primary
+            else -> MaterialTheme.colorScheme.surface
+        },
+        label = "backgroundColor"
+    )
+
+    val contentColor by animateColorAsState(
+        targetValue = when {
+            !enabled -> Color.Gray
+            isSelected -> Color.White
+            else -> MaterialTheme.colorScheme.onSurface
+        },
+        label = "contentColor"
+    )
+
+    Button(
+        onClick = onClick,
+        modifier = modifier.height(56.dp),
+        shape = RoundedCornerShape(12.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = backgroundColor,
+            contentColor = contentColor
+        ),
+        enabled = enabled
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = text,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+            )
+        }
     }
 }
 

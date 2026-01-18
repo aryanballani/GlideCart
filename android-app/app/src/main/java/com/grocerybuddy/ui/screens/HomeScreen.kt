@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
@@ -33,10 +34,14 @@ fun HomeScreen(viewModel: RobotViewModel) {
     val groceryList by viewModel.groceryList.collectAsState()
     val showCalibrationSuccess by viewModel.showCalibrationSuccess.collectAsState()
     val showEmergencyStopAlert by viewModel.showEmergencyStopAlert.collectAsState()
+    val videoFrame by viewModel.videoFrame.collectAsState()
+    val serverIp by viewModel.serverIp.collectAsState()
 
     var newItemText by remember { mutableStateOf("") }
     var newItemQuantity by remember { mutableStateOf("1") }
     var showAddItemDialog by remember { mutableStateOf(false) }
+    var showSettingsDialog by remember { mutableStateOf(false) }
+    var showVideoFeed by remember { mutableStateOf(false) }
 
     val isConnected = connectionState == RobotWebSocket.ConnectionState.CONNECTED
 
@@ -56,6 +61,24 @@ fun HomeScreen(viewModel: RobotViewModel) {
                     actions = {
                         // Connection Status Indicator
                         AnimatedConnectionIndicator(connectionState)
+
+                        // Video feed toggle
+                        IconButton(onClick = { showVideoFeed = !showVideoFeed }) {
+                            Icon(
+                                imageVector = if (showVideoFeed) Icons.Default.Videocam else Icons.Default.VideocamOff,
+                                contentDescription = "Toggle video feed",
+                                tint = if (showVideoFeed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
+                        // Settings button
+                        IconButton(onClick = { showSettingsDialog = true }) {
+                            Icon(
+                                imageVector = Icons.Default.Settings,
+                                contentDescription = "Settings",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
 
                         // Reconnect button
                         IconButton(onClick = { viewModel.reconnect() }) {
@@ -102,11 +125,19 @@ fun HomeScreen(viewModel: RobotViewModel) {
                     )
                 }
 
+                // Video Feed (if enabled)
+                if (showVideoFeed && videoFrame != null) {
+                    item {
+                        VideoFeedCard(videoFrame = videoFrame!!)
+                    }
+                }
+
                 // Control Buttons
                 item {
                     ControlButtons(
                         isTracking = robotStatus.isTracking,
                         isConnected = isConnected,
+                        currentMode = robotStatus.mode.name.lowercase(),
                         onCalibrate = { viewModel.calibrate() },
                         onStartStop = {
                             if (robotStatus.isTracking) {
@@ -115,7 +146,15 @@ fun HomeScreen(viewModel: RobotViewModel) {
                                 viewModel.startTracking()
                             }
                         },
-                        onEmergencyStop = { viewModel.emergencyStop() }
+                        onEmergencyStop = { viewModel.emergencyStop() },
+                        onModeChange = { mode ->
+                            val cameraMode = if (mode == "follow") {
+                                RobotWebSocket.CameraMode.FOLLOW
+                            } else {
+                                RobotWebSocket.CameraMode.SCAN
+                            }
+                            viewModel.setMode(cameraMode)
+                        }
                     )
                 }
 
@@ -258,6 +297,103 @@ fun HomeScreen(viewModel: RobotViewModel) {
                 }
             }
         )
+    }
+
+    // Settings Dialog
+    if (showSettingsDialog) {
+        var ipText by remember { mutableStateOf(serverIp) }
+
+        AlertDialog(
+            onDismissRequest = { showSettingsDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Settings,
+                    contentDescription = null
+                )
+            },
+            title = {
+                Text("Robot Settings")
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = "Raspberry Pi IP Address",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedTextField(
+                        value = ipText,
+                        onValueChange = { ipText = it },
+                        placeholder = { Text("10.19.129.238") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    Text(
+                        text = "Enter the IP address of your Raspberry Pi. Default port 8765 will be used.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.updateServerIp(ipText)
+                        viewModel.reconnect(ipText)
+                        showSettingsDialog = false
+                    }
+                ) {
+                    Text("Save & Reconnect")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSettingsDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun VideoFeedCard(videoFrame: String) {
+    val bitmap = remember(videoFrame) {
+        try {
+            val imageBytes = android.util.Base64.decode(videoFrame, android.util.Base64.DEFAULT)
+            android.graphics.BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(240.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            if (bitmap != null) {
+                androidx.compose.foundation.Image(
+                    bitmap = bitmap.asImageBitmap(),
+                    contentDescription = "Live camera feed",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                )
+            } else {
+                Text(
+                    text = "Loading video...",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
     }
 }
 

@@ -30,6 +30,12 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
         RobotWebSocket.RobotStatus()
     )
 
+    val videoFrame = robotWebSocket.videoFrame.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        null
+    )
+
     val groceryList = groceryDao.getAllItems().stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
@@ -42,6 +48,9 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
     private val _showEmergencyStopAlert = MutableStateFlow(false)
     val showEmergencyStopAlert = _showEmergencyStopAlert.asStateFlow()
 
+    private val _serverIp = MutableStateFlow("10.19.129.238")
+    val serverIp = _serverIp.asStateFlow()
+
     init {
         connectToRobot()
         syncFromSupabase()
@@ -49,16 +58,22 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // Robot Control Functions
-    fun connectToRobot() {
-        robotWebSocket.connect()
+    fun connectToRobot(ip: String = _serverIp.value) {
+        _serverIp.value = ip
+        robotWebSocket.connect(ip, 8765)
     }
 
     fun disconnectFromRobot() {
         robotWebSocket.disconnect()
     }
 
-    fun reconnect() {
-        robotWebSocket.reconnect()
+    fun reconnect(ip: String = _serverIp.value) {
+        _serverIp.value = ip
+        robotWebSocket.reconnect(ip, 8765)
+    }
+
+    fun updateServerIp(ip: String) {
+        _serverIp.value = ip
     }
 
     fun calibrate() {
@@ -152,19 +167,35 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             robotWebSocket.robotStatus
                 .map { it.detectedObject.trim() }
+                .filter { it.isNotBlank() }
                 .distinctUntilChanged()
                 .collect { detected ->
-                    if (detected.isBlank()) return@collect
+                    // Check if item exists in list
                     val match = groceryList.value.firstOrNull {
-                        it.name.equals(detected, ignoreCase = true) && !it.removed
+                        it.name.equals(detected, ignoreCase = true)
                     }
+
                     if (match != null) {
-                        val updated = match.copy(
+                        // Item exists - strike it off if not already removed
+                        if (!match.removed) {
+                            val updated = match.copy(
+                                removed = true,
+                                removedAt = System.currentTimeMillis()
+                            )
+                            groceryDao.update(updated)
+                            supabaseService.updateRemoved(updated.name, true, updated.removedAt)
+                        }
+                    } else {
+                        // Item not on list - add it and strike it off immediately
+                        val newItem = GroceryItem(
+                            name = detected,
+                            quantity = 1,
                             removed = true,
+                            addedAt = System.currentTimeMillis(),
                             removedAt = System.currentTimeMillis()
                         )
-                        groceryDao.update(updated)
-                        supabaseService.updateRemoved(updated.name, true, updated.removedAt)
+                        groceryDao.insert(newItem)
+                        supabaseService.upsertItem(newItem)
                     }
                 }
         }
