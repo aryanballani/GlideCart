@@ -1,56 +1,42 @@
-# Grocery Buddy 🛒
+# GlideCart 🛒🤖
 
-Autonomous Shopping Cart Robot with Person-Following & Android Control
+**GlideCart** is an autonomous, AI-powered shopping companion designed to remove physical barriers in retail. Built in just 12 hours, this prototype provides a hands-free, intelligent shopping experience for people with mobility challenges or accessibility needs.
 
-## Overview
+## 🚀 The Vision
 
-A smart robot cart that autonomously follows a user (identified by a colored marker) through a grocery store, while an Android app provides control, calibration, and grocery list management.
+For wheelchair users or the elderly, navigating a store while pushing a heavy cart is a significant physical hurdle. **GlideCart** solves this by using vision-based tracking to follow the user and integrated computer vision to automate the checkout process.
 
-## Key Features
+## ✨ Key Features
 
-- **Accessibility Focus** - Helps people with mobility challenges
-- **Computer Vision** - Real-time person tracking with OpenCV
-- **Mobile Integration** - Seamless Android control via WebSocket
-- **Practical Application** - Solves a real problem
+* **"Follow-Me" Mode:** Uses **ArUco marker** calibration to lock onto the user and maintain a safe distance autonomously.
+* **Smart Recognition:** A custom-trained, lightweight vision model identifies items (Milk, Apples, Oranges, etc.) in real-time.
+* **Live Checklist:** Automatically detects and checks off items from a shopping list as they are placed in the cart.
+* **Mobile Control:** An **Android App** provides a live camera feed and manual override options.
+* **Real-time Sync:** Powered by **Supabase SQL** for instant communication between the robot and the mobile device.
 
-## System Components
+## 🛠️ Tech Stack
 
-- **Android App** (Kotlin + Jetpack Compose) - User control interface
-- **Raspberry Pi** (Python) - Computer vision, motor control, WebSocket server
-- **Hardware** - Pi Camera, DC motors, L298N driver, ultrasonic sensor
+* **Hardware:** Raspberry Pi 4, USB Webcam, L298N Motor Driver, DC Motors.
+* **Vision:** OpenCV (ArUco tracking), Python, TensorFlow Lite (Custom Object Detection).
+* **Mobile/Backend:** Android SDK (Kotlin/Java), Gradle, Supabase (PostgreSQL).
+* **Connectivity:** Internet Gateway for Pi-to-App low-latency communication.
 
-## Repository Structure
+## 🏗️ Architecture
 
-```
-grocery-buddy/
-├── android-app/          # Android Kotlin app
-├── raspberry-pi/         # Raspberry Pi Python code
-├── docs/                 # Documentation and assembly guides
-└── README.md
-```
+1. **Perception:** The Webcam captures frames; OpenCV detects the ArUco marker for distance/angle.
+2. **Logic:** The Raspberry Pi calculates motor speeds to maintain a "lock" on the user.
+3. **Recognition:** The Vision model scans the cart's interior; detected items are sent to the backend.
+4. **Interface:** Supabase pushes the update to the Android App, checking the item off the user's list.
 
-## Quick Start
+## 📈 Future Scalability
 
-See documentation in `/docs` for:
-- Assembly instructions
-- Software setup
-- Wiring diagrams
-- Demo guide
+This MVP proves the concept on lightweight hardware. With more powerful processors (e.g., NVIDIA Jetson) and depth sensors (LiDAR), GlideCart can scale to handle:
 
-## Tech Stack
+* Dynamic obstacle avoidance in high-traffic aisles.
+* Full store navigation and inventory mapping.
+* Integration with hospital and warehouse logistics.
 
-### Android App
-- Kotlin
-- Jetpack Compose
-- OkHttp (WebSocket)
-- Material 3
+## 👥 The Team
 
-### Raspberry Pi
-- Python 3
-- OpenCV
-- pigpio (motor control)
-- websockets
+Built with 💡 and ☕ in 12 hours for the NwHacks 2026.
 
-## License
-
-MIT
