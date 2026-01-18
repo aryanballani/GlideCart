@@ -5,7 +5,7 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-@Database(entities = [GroceryItem::class], version = 1, exportSchema = false)
+@Database(entities = [GroceryItem::class], version = 2, exportSchema = false)
 abstract class GroceryDatabase : RoomDatabase() {
     abstract fun groceryDao(): GroceryDao
 
@@ -19,7 +19,9 @@ abstract class GroceryDatabase : RoomDatabase() {
                     context.applicationContext,
                     GroceryDatabase::class.java,
                     "grocery_database"
-                ).build()
+                )
+                    .fallbackToDestructiveMigration()
+                    .build()
                 INSTANCE = instance
                 instance
             }

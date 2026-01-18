@@ -28,7 +28,7 @@ fun GroceryItemCard(
     var isExpanded by remember { mutableStateOf(false) }
 
     val backgroundColor by animateColorAsState(
-        targetValue = if (item.isChecked) {
+        targetValue = if (item.removed) {
             MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
         } else {
             MaterialTheme.colorScheme.surface
@@ -42,7 +42,7 @@ fun GroceryItemCard(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = backgroundColor),
         elevation = CardDefaults.cardElevation(
-            defaultElevation = if (item.isChecked) 1.dp else 4.dp
+            defaultElevation = if (item.removed) 1.dp else 4.dp
         ),
         onClick = { isExpanded = !isExpanded }
     ) {
@@ -59,7 +59,7 @@ fun GroceryItemCard(
             ) {
                 // Checkbox
                 Checkbox(
-                    checked = item.isChecked,
+                    checked = item.removed,
                     onCheckedChange = { onToggle() },
                     colors = CheckboxDefaults.colors(
                         checkedColor = MaterialTheme.colorScheme.primary,
@@ -70,21 +70,27 @@ fun GroceryItemCard(
                 Spacer(modifier = Modifier.width(12.dp))
 
                 // Item name
-                Text(
-                    text = item.name,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = if (item.isChecked) {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
-                    },
-                    textDecoration = if (item.isChecked) {
-                        TextDecoration.LineThrough
-                    } else {
-                        TextDecoration.None
-                    },
-                    modifier = Modifier.weight(1f)
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = item.name,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = if (item.removed) {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                        textDecoration = if (item.removed) {
+                            TextDecoration.LineThrough
+                        } else {
+                            TextDecoration.None
+                        }
+                    )
+                    Text(
+                        text = "Qty: ${item.quantity}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
 
             // Delete button

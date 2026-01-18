@@ -5,9 +5,10 @@ import androidx.room.PrimaryKey
 
 @Entity(tableName = "grocery_items")
 data class GroceryItem(
-    @PrimaryKey(autoGenerate = true)
-    val id: Int = 0,
+    @PrimaryKey
     val name: String,
-    val isChecked: Boolean = false,
-    val timestamp: Long = System.currentTimeMillis()
+    val quantity: Int = 1,
+    val removed: Boolean = false,
+    val addedAt: Long = System.currentTimeMillis(),
+    val removedAt: Long? = null
 )

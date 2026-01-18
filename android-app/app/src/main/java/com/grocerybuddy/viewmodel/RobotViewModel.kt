@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.grocerybuddy.data.GroceryDatabase
 import com.grocerybuddy.data.GroceryItem
 import com.grocerybuddy.network.RobotWebSocket
+import com.grocerybuddy.network.SupabaseService
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -15,6 +16,7 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
     private val groceryDao = database.groceryDao()
 
     private val robotWebSocket = RobotWebSocket()
+    private val supabaseService = SupabaseService()
 
     val connectionState = robotWebSocket.connectionState.stateIn(
         viewModelScope,
@@ -42,6 +44,8 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         connectToRobot()
+        syncFromSupabase()
+        observeDetectedObjects()
     }
 
     // Robot Control Functions
@@ -88,37 +92,81 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // Grocery List Functions
-    fun addGroceryItem(name: String) {
+    fun addGroceryItem(name: String, quantity: Int = 1) {
         viewModelScope.launch {
             if (name.isNotBlank()) {
-                groceryDao.insert(GroceryItem(name = name.trim()))
+                val item = GroceryItem(
+                    name = name.trim(),
+                    quantity = quantity.coerceAtLeast(1),
+                    removed = false,
+                    addedAt = System.currentTimeMillis(),
+                    removedAt = null
+                )
+                groceryDao.insert(item)
+                supabaseService.upsertItem(item)
             }
         }
     }
 
     fun toggleItem(item: GroceryItem) {
         viewModelScope.launch {
-            groceryDao.update(item.copy(isChecked = !item.isChecked))
+            val willRemove = !item.removed
+            val updated = item.copy(
+                removed = willRemove,
+                removedAt = if (willRemove) System.currentTimeMillis() else null
+            )
+            groceryDao.update(updated)
+            supabaseService.updateRemoved(updated.name, updated.removed, updated.removedAt)
         }
     }
 
     fun deleteItem(item: GroceryItem) {
         viewModelScope.launch {
             groceryDao.delete(item)
+            supabaseService.deleteItem(item.name)
         }
     }
 
     fun deleteCheckedItems() {
         viewModelScope.launch {
-            groceryList.value
-                .filter { it.isChecked }
-                .forEach { groceryDao.delete(it) }
+            groceryDao.deleteRemovedItems()
+            supabaseService.deleteRemoved()
         }
     }
 
     fun clearAllItems() {
         viewModelScope.launch {
             groceryDao.deleteAll()
+            supabaseService.deleteAll()
+        }
+    }
+
+    private fun syncFromSupabase() {
+        viewModelScope.launch {
+            val remoteItems = supabaseService.fetchItems()
+            remoteItems.forEach { groceryDao.insert(it) }
+        }
+    }
+
+    private fun observeDetectedObjects() {
+        viewModelScope.launch {
+            robotWebSocket.robotStatus
+                .map { it.detectedObject.trim() }
+                .distinctUntilChanged()
+                .collect { detected ->
+                    if (detected.isBlank()) return@collect
+                    val match = groceryList.value.firstOrNull {
+                        it.name.equals(detected, ignoreCase = true) && !it.removed
+                    }
+                    if (match != null) {
+                        val updated = match.copy(
+                            removed = true,
+                            removedAt = System.currentTimeMillis()
+                        )
+                        groceryDao.update(updated)
+                        supabaseService.updateRemoved(updated.name, true, updated.removedAt)
+                    }
+                }
         }
     }
 

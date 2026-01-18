@@ -17,6 +17,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.grocerybuddy.network.RobotWebSocket
 import com.grocerybuddy.ui.components.*
@@ -33,6 +35,7 @@ fun HomeScreen(viewModel: RobotViewModel) {
     val showEmergencyStopAlert by viewModel.showEmergencyStopAlert.collectAsState()
 
     var newItemText by remember { mutableStateOf("") }
+    var newItemQuantity by remember { mutableStateOf("1") }
     var showAddItemDialog by remember { mutableStateOf(false) }
 
     val isConnected = connectionState == RobotWebSocket.ConnectionState.CONNECTED
@@ -132,7 +135,7 @@ fun HomeScreen(viewModel: RobotViewModel) {
 
                         if (groceryList.isNotEmpty()) {
                             TextButton(onClick = { viewModel.deleteCheckedItems() }) {
-                                Text("Clear Checked")
+                                Text("Clear Removed")
                             }
                         }
                     }
@@ -146,7 +149,7 @@ fun HomeScreen(viewModel: RobotViewModel) {
                 } else {
                     items(
                         items = groceryList,
-                        key = { it.id }
+                            key = { it.name }
                     ) { item ->
                         AnimatedVisibility(
                             visible = true,
@@ -199,6 +202,7 @@ fun HomeScreen(viewModel: RobotViewModel) {
             onDismissRequest = {
                 showAddItemDialog = false
                 newItemText = ""
+                newItemQuantity = "1"
             },
             title = {
                 Text(
@@ -208,21 +212,34 @@ fun HomeScreen(viewModel: RobotViewModel) {
                 )
             },
             text = {
-                OutlinedTextField(
-                    value = newItemText,
-                    onValueChange = { newItemText = it },
-                    placeholder = { Text("Enter item name") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(
+                        value = newItemText,
+                        onValueChange = { newItemText = it },
+                        placeholder = { Text("Enter item name") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    OutlinedTextField(
+                        value = newItemQuantity,
+                        onValueChange = { newItemQuantity = it.filter { ch -> ch.isDigit() } },
+                        placeholder = { Text("Quantity") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
             },
             confirmButton = {
                 Button(
                     onClick = {
                         if (newItemText.isNotBlank()) {
-                            viewModel.addGroceryItem(newItemText)
+                            val quantity = newItemQuantity.toIntOrNull() ?: 1
+                            viewModel.addGroceryItem(newItemText, quantity)
                             newItemText = ""
+                            newItemQuantity = "1"
                             showAddItemDialog = false
                         }
                     },
@@ -235,6 +252,7 @@ fun HomeScreen(viewModel: RobotViewModel) {
                 TextButton(onClick = {
                     showAddItemDialog = false
                     newItemText = ""
+                    newItemQuantity = "1"
                 }) {
                     Text("Cancel")
                 }
