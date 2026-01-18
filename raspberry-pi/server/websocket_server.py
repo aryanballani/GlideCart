@@ -120,12 +120,13 @@ class RobotWebSocketServer:
             # Get latest vision result
             frame, result = self.robot.camera.process_frame()
 
-            # Get normalized x, y coordinates if in follow mode
+            # Get normalized x, y coordinates from the result
             x_offset, y_offset = 0.0, 0.0
-            if result.mode.value == "follow" and result.found:
-                normalized_center = self.robot.camera.aruco_tracker.get_locked_center(frame, normalized=True)
-                if normalized_center:
-                    x_offset, y_offset = normalized_center
+            if result.mode.value == "follow" and result.found and result.center:
+                # Calculate normalized offset from center (already computed in vision result)
+                h, w = frame.shape[:2] if frame is not None else (480, 640)
+                x_offset = (result.center[0] - w / 2) / (w / 2)
+                y_offset = (result.center[1] - h / 2) / (h / 2)
 
             status = {
                 "type": "status",
@@ -158,12 +159,13 @@ class RobotWebSocketServer:
                 try:
                     frame, result = self.robot.camera.process_frame()
 
-                    # Get normalized x, y coordinates if in follow mode
+                    # Get normalized x, y coordinates from the result
                     x_offset, y_offset = 0.0, 0.0
-                    if result.mode.value == "follow" and result.found:
-                        normalized_center = self.robot.camera.aruco_tracker.get_locked_center(frame, normalized=True)
-                        if normalized_center:
-                            x_offset, y_offset = normalized_center
+                    if result.mode.value == "follow" and result.found and result.center:
+                        # Calculate normalized offset from center (already computed in vision result)
+                        h, w = frame.shape[:2] if frame is not None else (480, 640)
+                        x_offset = (result.center[0] - w / 2) / (w / 2)
+                        y_offset = (result.center[1] - h / 2) / (h / 2)
 
                     status = {
                         "type": "status",

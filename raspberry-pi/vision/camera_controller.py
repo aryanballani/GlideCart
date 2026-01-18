@@ -63,6 +63,12 @@ class CameraController:
         # Initialize vision modules
         self.aruco_tracker = ArucoTracker()
         self.object_detector = ObjectDetector(use_yolo=use_yolo)
+        
+        # Performance optimization - frame skipping
+        self._frame_count = 0
+        self._skip_frames_scan = 1  # Process every frame in SCAN mode (YOLO is optimized)
+        self._skip_frames_follow = 0  # No skipping in FOLLOW mode (ArUco is fast)
+        self._last_result = None  # Cache last result for skipped frames
 
         print(f"✓ CameraController initialized (Camera ID: {camera_id}, Mode: {self.mode.value})")
 
@@ -120,19 +126,37 @@ class CameraController:
                 confidence=0.0
             )
 
-        # Process based on mode
-        if self.mode == CameraMode.FOLLOW:
-            result = self._process_follow_mode(frame)
-        else:  # SCAN mode
-            result = self._process_scan_mode(frame)
+        # Determine if we should process this frame (optimization)
+        skip_interval = self._skip_frames_follow if self.mode == CameraMode.FOLLOW else self._skip_frames_scan
+        should_process = (self._frame_count % (skip_interval + 1)) == 0
+        
+        self._frame_count += 1
+        
+        # Process based on mode (only if not skipping or no cached result)
+        if should_process or self._last_result is None:
+            if self.mode == CameraMode.FOLLOW:
+                result = self._process_follow_mode(frame)
+            else:  # SCAN mode
+                result = self._process_scan_mode(frame)
+            self._last_result = result
+        else:
+            # Use cached result but update mode if changed
+            result = self._last_result
+            if result.mode != self.mode:
+                # Mode changed, force reprocess
+                if self.mode == CameraMode.FOLLOW:
+                    result = self._process_follow_mode(frame)
+                else:
+                    result = self._process_scan_mode(frame)
+                self._last_result = result
 
-        # Annotate frame
+        # Always annotate the current frame with latest result
         annotated = self._annotate_frame(frame, result)
 
         return annotated, result
 
     def _process_follow_mode(self, frame: np.ndarray) -> VisionResult:
-        """Process frame in FOLLOW mode"""
+        """Process frame in FOLLOW mode - ArUco marker tracking"""
         detection = self.aruco_tracker.detect(frame)
 
         if detection.found:
@@ -141,12 +165,18 @@ class CameraController:
             if detection.center:
                 offset = (detection.center[0] - CAMERA_WIDTH / 2) / (CAMERA_WIDTH / 2)
 
+            # Distance estimation (will be 0.0 if not calibrated)
             distance_m = detection.distance if detection.distance is not None else 0.0
+            
+            # Determine label based on calibration status
+            label = f"ArUco Marker #{detection.marker_id}" if detection.marker_id is not None else "ArUco Marker"
+            if self.aruco_tracker.focal_length_px is None:
+                label += " (Uncalibrated)"
 
             return VisionResult(
                 mode=CameraMode.FOLLOW,
                 found=True,
-                label="Aruco Marker",
+                label=label,
                 confidence=detection.confidence,
                 center=detection.center,
                 bbox=detection.bbox,
@@ -158,7 +188,7 @@ class CameraController:
             return VisionResult(
                 mode=CameraMode.FOLLOW,
                 found=False,
-                label="No target",
+                label="No ArUco marker detected",
                 confidence=0.0,
                 raw_detection=detection
             )
@@ -245,16 +275,22 @@ class CameraController:
         if result.found and result.bbox:
             x, y, bw, bh = result.bbox
 
-            # Bounding box
+            # Bounding box - GREEN for good detection, ORANGE for low confidence
             box_color = (0, 255, 0) if result.confidence > 0.5 else (0, 165, 255)
-            cv2.rectangle(annotated, (x, y), (x+bw, y+bh), box_color, 2)
+            # Draw thicker box for better visibility
+            cv2.rectangle(annotated, (x, y), (x+bw, y+bh), box_color, 3)
 
-            # Center point
+            # Center point - RED DOT (very visible)
             if result.center:
-                cv2.circle(annotated, result.center, 8, (0, 0, 255), -1)
+                # Draw outer circle for better visibility
+                cv2.circle(annotated, result.center, 10, (0, 0, 0), 2)  # Black outline
+                cv2.circle(annotated, result.center, 8, (0, 0, 255), -1)  # Red filled
 
             # Label with confidence
             label_text = f"{result.label} ({result.confidence*100:.0f}%)"
+            # Add background to text for better visibility
+            (text_width, text_height), _ = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+            cv2.rectangle(annotated, (x, y - text_height - 15), (x + text_width, y - 5), (0, 0, 0), -1)
             cv2.putText(
                 annotated,
                 label_text,

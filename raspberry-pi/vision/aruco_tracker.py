@@ -109,6 +109,7 @@ class ArucoTracker:
         Return the marker center coordinates when calibrated ("locked").
         If normalized=True, returns (-1..1) offsets from frame center.
         """
+        # Fast path: if not calibrated, return None immediately
         if self.focal_length_px is None:
             return None
 
@@ -124,17 +125,24 @@ class ArucoTracker:
         if w == 0 or h == 0:
             return None
 
+        # Normalize to -1..1 range
         x_norm = (cx - w / 2) / (w / 2)
         y_norm = (cy - h / 2) / (h / 2)
         return float(x_norm), float(y_norm)
 
     def detect(self, frame: np.ndarray) -> ArucoDetection:
         """Detect the first ArUco marker in frame."""
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        # Convert to grayscale only once
+        if len(frame.shape) == 3:
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        else:
+            gray = frame
+            
         corners, ids = self._detect_markers(gray)
         if ids is None or len(corners) == 0:
             return ArucoDetection(found=False)
 
+        # Process first marker (most reliable)
         c = corners[0].reshape((4, 2))
         center = c.mean(axis=0)
         center_pt = (int(center[0]), int(center[1]))
@@ -145,10 +153,12 @@ class ArucoTracker:
         y_max = int(np.max(c[:, 1]))
         bbox = (x_min, y_min, x_max - x_min, y_max - y_min)
 
+        # Calculate marker width in pixels (average of top and bottom edges)
         top_w = np.linalg.norm(c[0] - c[1])
         bot_w = np.linalg.norm(c[2] - c[3])
         px_w = (top_w + bot_w) / 2.0
 
+        # Estimate distance (returns None if not calibrated)
         distance_m = self.estimate_distance_m(px_w)
         marker_id = int(ids[0][0]) if ids is not None else None
 
