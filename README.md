@@ -1,3 +1,6 @@
+# Demo Link:
+https://drive.google.com/drive/u/0/folders/19QWG6ALGIOkFRJ7etu4uVtGdm4aqz5qc
+
 # GlideCart 🛒🤖
 
 **GlideCart** is an autonomous, AI-powered shopping companion designed to remove physical barriers in retail. Built in just 12 hours, this prototype provides a hands-free, intelligent shopping experience for people with mobility challenges or accessibility needs.
